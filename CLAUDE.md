@@ -175,7 +175,7 @@ No console.log except server startup.
 
 Always preserve existing project structure.
 
-Reuse existing middleware.
+Reuse existing middleware.  
 
 Reuse existing utilities.
 
