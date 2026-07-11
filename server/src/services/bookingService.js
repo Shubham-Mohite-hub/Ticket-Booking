@@ -1,15 +1,16 @@
 const mongoose = require("mongoose");
 const Booking = require("../models/Booking");
 const Event = require("../models/Event");
+const Seat = require("../models/Seat");
+const SeatHold = require("../models/SeatHold");
 const ApiError = require("../utils/ApiError");
 const { BOOKING_STATUS } = require("../constants/bookingStatus");
 const { EVENT_STATUS } = require("../constants/eventStatus");
+const { SEAT_STATUS } = require("../constants/seatStatus");
 const { ROLES } = require("../constants/roles");
 
-const SEAT_HOLD_TTL_MINUTES = 10;
-
 const createBooking = async (bookingData, userId) => {
-  const { event, seats } = bookingData;
+  const { event, seatHoldIds } = bookingData;
 
   const eventDoc = await Event.findById(event);
 
@@ -21,23 +22,86 @@ const createBooking = async (bookingData, userId) => {
     throw new ApiError(400, "Bookings are not allowed for cancelled events");
   }
 
-  // TODO: Once the Seat Management module exists, add concurrency protection
-  // and seat availability checks here (e.g. MongoDB transactions / atomic
-  // seat-status updates) to guarantee two customers cannot hold or book the
-  // same seat simultaneously, per the assignment's concurrency requirement.
+  const session = await mongoose.startSession();
+  let booking;
 
-  const totalAmount = seats.reduce((sum, seat) => sum + seat.price, 0);
+  try {
+    await session.withTransaction(async () => {
+      const seats = [];
+      const seatIdsToConfirm = [];
+      const now = new Date();
 
-  const expiresAt = new Date(Date.now() + SEAT_HOLD_TTL_MINUTES * 60 * 1000);
+      for (const seatHoldId of seatHoldIds) {
+        if (!mongoose.Types.ObjectId.isValid(seatHoldId)) {
+          throw new ApiError(400, "Invalid seat hold id");
+        }
 
-  const booking = await Booking.create({
-    user: userId,
-    event,
-    seats,
-    totalAmount,
-    status: BOOKING_STATUS.PENDING,
-    expiresAt,
-  });
+        const hold = await SeatHold.findOne({
+          _id: seatHoldId,
+          user: userId,
+          event,
+        }).session(session);
+
+        if (!hold) {
+          throw new ApiError(404, "Seat hold not found or does not belong to you");
+        }
+
+        if (hold.expiresAt <= now) {
+          throw new ApiError(409, "Seat hold has expired, please select seats again");
+        }
+
+        const seat = await Seat.findById(hold.seat).session(session);
+
+        if (!seat) {
+          throw new ApiError(404, "Seat not found for the given hold");
+        }
+
+        if (seat.status !== SEAT_STATUS.HELD) {
+          throw new ApiError(409, "One or more seats are no longer held and cannot be confirmed");
+        }
+
+        seats.push({
+          row: seat.row,
+          column: seat.column,
+          category: seat.category,
+          price: seat.price,
+        });
+
+        seatIdsToConfirm.push(seat._id);
+      }
+
+      const totalAmount = seats.reduce((sum, seat) => sum + seat.price, 0);
+
+      const updateResult = await Seat.updateMany(
+        { _id: { $in: seatIdsToConfirm }, status: SEAT_STATUS.HELD },
+        { status: SEAT_STATUS.BOOKED },
+        { session }
+      );
+
+      if (updateResult.modifiedCount !== seatIdsToConfirm.length) {
+        throw new ApiError(409, "One or more seats could not be confirmed, please try again");
+      }
+
+      await SeatHold.deleteMany({ _id: { $in: seatHoldIds } }, { session });
+
+      const created = await Booking.create(
+        [
+          {
+            user: userId,
+            event,
+            seats,
+            totalAmount,
+            status: BOOKING_STATUS.CONFIRMED,
+          },
+        ],
+        { session }
+      );
+
+      booking = created[0];
+    });
+  } finally {
+    session.endSession();
+  }
 
   return booking;
 };
@@ -79,32 +143,58 @@ const cancelBooking = async (bookingId, userId, userRole) => {
     throw new ApiError(400, "Invalid booking id");
   }
 
-  const booking = await Booking.findById(bookingId);
+  const session = await mongoose.startSession();
+  let booking;
 
-  if (!booking) {
-    throw new ApiError(404, "Booking not found");
+  try {
+    await session.withTransaction(async () => {
+      booking = await Booking.findById(bookingId).session(session);
+
+      if (!booking) {
+        throw new ApiError(404, "Booking not found");
+      }
+
+      const isOwner = booking.user.toString() === userId;
+      const isAdmin = userRole === ROLES.ADMIN;
+
+      if (!isOwner && !isAdmin) {
+        throw new ApiError(403, "You do not have permission to cancel this booking");
+      }
+
+      if (booking.status === BOOKING_STATUS.CANCELLED) {
+        throw new ApiError(400, "Booking is already cancelled");
+      }
+
+      const seatFilters = booking.seats.map((seat) => ({
+        row: seat.row,
+        column: seat.column,
+      }));
+
+      const seatUpdateResult = await Seat.updateMany(
+        { event: booking.event, status: SEAT_STATUS.BOOKED, $or: seatFilters },
+        { status: SEAT_STATUS.AVAILABLE },
+        { session }
+      );
+
+      if (seatUpdateResult.modifiedCount !== booking.seats.length) {
+        throw new ApiError(
+          409,
+          "One or more seats could not be released, please try again"
+        );
+      }
+
+      // TODO: Once the Waitlist module exists, check for waitlisted
+      // customers for this event/category here and promote the next
+      // eligible customer with a time-limited offer, instead of simply
+      // releasing the seats back to AVAILABLE.
+
+      booking.status = BOOKING_STATUS.CANCELLED;
+
+      await booking.save({ session });
+    });
+  } finally {
+    session.endSession();
   }
-
-  const isOwner = booking.user.toString() === userId;
-  const isAdmin = userRole === ROLES.ADMIN;
-
-  if (!isOwner && !isAdmin) {
-    throw new ApiError(403, "You do not have permission to cancel this booking");
-  }
-
-  if (booking.status === BOOKING_STATUS.CANCELLED) {
-    throw new ApiError(400, "Booking is already cancelled");
-  }
-
-  booking.status = BOOKING_STATUS.CANCELLED;
-
-  await booking.save();
-
-  // Placeholder for future modular extensions (added without changing this
-  // method's signature or the PATCH /bookings/:id/cancel route):
-  // 1. Release the booking's seats back to the event's seat map.
-  // 2. Check the waitlist for this event/category and promote the next
-  //    customer with a time-limited offer.
 
   return booking;
 };

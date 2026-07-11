@@ -8,6 +8,7 @@ const authRoutes = require("./routes/authRoutes");
 const venueRoutes = require("./routes/venueRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
+const seatRoutes = require("./routes/seatRoutes");
 
 const app = express();
 
@@ -32,5 +33,6 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/venues", venueRoutes);
 app.use("/api/v1/events", eventRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
+app.use("/api/v1/seats", seatRoutes);
 
 module.exports = app;
