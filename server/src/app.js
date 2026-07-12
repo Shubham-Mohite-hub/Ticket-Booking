@@ -9,6 +9,7 @@ const venueRoutes = require("./routes/venueRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const seatRoutes = require("./routes/seatRoutes");
+const waitlistRoutes = require("./routes/waitlistRoutes");
 
 const app = express();
 
@@ -34,5 +35,6 @@ app.use("/api/v1/venues", venueRoutes);
 app.use("/api/v1/events", eventRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/seats", seatRoutes);
+app.use("/api/v1/waitlist", waitlistRoutes);
 
 module.exports = app;

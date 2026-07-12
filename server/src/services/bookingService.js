@@ -3,6 +3,7 @@ const Booking = require("../models/Booking");
 const Event = require("../models/Event");
 const Seat = require("../models/Seat");
 const SeatHold = require("../models/SeatHold");
+const waitlistService = require("./waitlistService");
 const ApiError = require("../utils/ApiError");
 const { BOOKING_STATUS } = require("../constants/bookingStatus");
 const { EVENT_STATUS } = require("../constants/eventStatus");
@@ -165,28 +166,43 @@ const cancelBooking = async (bookingId, userId, userRole) => {
         throw new ApiError(400, "Booking is already cancelled");
       }
 
-      const seatFilters = booking.seats.map((seat) => ({
-        row: seat.row,
-        column: seat.column,
-      }));
+      const seatsToReleaseToAvailable = [];
 
-      const seatUpdateResult = await Seat.updateMany(
-        { event: booking.event, status: SEAT_STATUS.BOOKED, $or: seatFilters },
-        { status: SEAT_STATUS.AVAILABLE },
-        { session }
-      );
+      for (const bookedSeat of booking.seats) {
+        const seatDoc = await Seat.findOne({
+          event: booking.event,
+          row: bookedSeat.row,
+          column: bookedSeat.column,
+        }).session(session);
 
-      if (seatUpdateResult.modifiedCount !== booking.seats.length) {
-        throw new ApiError(
-          409,
-          "One or more seats could not be released, please try again"
-        );
+        if (!seatDoc) {
+          throw new ApiError(409, "Seat record not found during cancellation");
+        }
+
+        const wasPromoted = await waitlistService.promoteNextForSeat(seatDoc, session);
+
+        if (!wasPromoted) {
+          seatsToReleaseToAvailable.push(seatDoc._id);
+        }
       }
 
-      // TODO: Once the Waitlist module exists, check for waitlisted
-      // customers for this event/category here and promote the next
-      // eligible customer with a time-limited offer, instead of simply
-      // releasing the seats back to AVAILABLE.
+      if (seatsToReleaseToAvailable.length > 0) {
+        const seatUpdateResult = await Seat.updateMany(
+          {
+            _id: { $in: seatsToReleaseToAvailable },
+            status: SEAT_STATUS.BOOKED,
+          },
+          { status: SEAT_STATUS.AVAILABLE },
+          { session }
+        );
+
+        if (seatUpdateResult.modifiedCount !== seatsToReleaseToAvailable.length) {
+          throw new ApiError(
+            409,
+            "One or more seats could not be released, please try again"
+          );
+        }
+      }
 
       booking.status = BOOKING_STATUS.CANCELLED;
 
