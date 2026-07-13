@@ -5,6 +5,8 @@ const Seat = require("../models/Seat");
 const Event = require("../models/Event");
 const Venue = require("../models/Venue");
 const Booking = require("../models/Booking");
+const User = require("../models/User");
+const emailService = require("./emailService");
 const ApiError = require("../utils/ApiError");
 const { WAITLIST_STATUS } = require("../constants/waitlistStatus");
 const { SEAT_STATUS } = require("../constants/seatStatus");
@@ -104,7 +106,7 @@ const promoteNextForSeat = async (seat, session) => {
   );
 
   if (!nextInLine) {
-    return false;
+    return null;
   }
 
   const updatedSeat = await Seat.findOneAndUpdate(
@@ -117,13 +119,15 @@ const promoteNextForSeat = async (seat, session) => {
     nextInLine.status = WAITLIST_STATUS.WAITING;
     await nextInLine.save({ session });
 
-    return false;
+    return null;
   }
 
   const expiresAt = new Date(Date.now() + WAITLIST_OFFER_TTL_MINUTES * 60 * 1000);
 
+  let offer;
+
   try {
-    await WaitlistOffer.create(
+    const created = await WaitlistOffer.create(
       [
         {
           waitlist: nextInLine._id,
@@ -135,6 +139,8 @@ const promoteNextForSeat = async (seat, session) => {
       ],
       { session }
     );
+
+    offer = created[0];
   } catch (error) {
     if (error.code === 11000) {
       throw new ApiError(409, "An offer already exists for this waitlist entry");
@@ -143,11 +149,48 @@ const promoteNextForSeat = async (seat, session) => {
     throw error;
   }
 
-  // TODO: Once the Email/QR module exists, send an email notification to
-  // nextInLine.user here, informing them of the time-limited offer
-  // (event, seat, category, expiresAt) and a link to accept it.
+  const [customer, eventDoc] = await Promise.all([
+    User.findById(nextInLine.user).session(session),
+    Event.findById(seat.event).session(session),
+  ]);
 
-  return true;
+  if (!customer || !eventDoc) {
+    throw new ApiError(404, "Customer or event not found while preparing waitlist offer");
+  }
+
+  const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const acceptUrl = `${frontendBaseUrl}/waitlist/offers/${offer._id.toString()}/accept`;
+
+  // TODO: Once a scheduler exists, expired offers that never get consumed
+  // here should be reconciled proactively (see the standalone TODO near
+  // the bottom of this file). No email is sent from inside this function
+  // or from within session.withTransaction() — that happens afterward via
+  // sendOfferEmailForPromotion(), called only once the enclosing
+  // transaction (in bookingService.cancelBooking) has committed.
+  return {
+    offerId: offer._id.toString(),
+    to: customer.email,
+    customerName: customer.name,
+    eventTitle: eventDoc.title,
+    category: seat.category,
+    expiresAt,
+    acceptUrl,
+  };
+};
+
+const sendOfferEmailForPromotion = async (promotion) => {
+  try {
+    await emailService.sendWaitlistOffer({
+      to: promotion.to,
+      customerName: promotion.customerName,
+      eventTitle: promotion.eventTitle,
+      category: promotion.category,
+      expiresAt: promotion.expiresAt.toLocaleString(),
+      acceptUrl: promotion.acceptUrl,
+    });
+  } catch (error) {
+    console.error("Failed to send waitlist offer email:", error);
+  }
 };
 
 const acceptOffer = async (offerId, userId) => {
@@ -237,13 +280,33 @@ const acceptOffer = async (offerId, userId) => {
         { status: WAITLIST_STATUS.CONVERTED },
         { session }
       );
-
-      // TODO: Once the Email/QR module exists, send the confirmed booking
-      // email with QR code ticket here, same as a normal booking confirmation.
     });
   } finally {
     session.endSession();
   }
+
+  const [customer, eventDoc] = await Promise.all([
+    User.findById(booking.user),
+    Event.findById(booking.event),
+  ]);
+
+  if (!customer || !eventDoc) {
+    return booking;
+  }
+
+  const venue = await Venue.findById(eventDoc.venue);
+
+  await emailService.sendBookingConfirmation({
+    to: customer.email,
+    bookingId: booking._id.toString(),
+    eventTitle: eventDoc.title,
+    eventDate: eventDoc.eventDate.toDateString(),
+    eventTime: eventDoc.startTime,
+    venueName: venue ? venue.name : "N/A",
+    customerName: customer.name,
+    seats: booking.seats,
+    totalAmount: booking.totalAmount,
+  });
 
   return booking;
 };
@@ -271,5 +334,6 @@ module.exports = {
   getMyWaitlistEntries,
   leaveWaitlist,
   promoteNextForSeat,
+  sendOfferEmailForPromotion,
   acceptOffer,
 };

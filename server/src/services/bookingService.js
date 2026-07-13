@@ -3,7 +3,10 @@ const Booking = require("../models/Booking");
 const Event = require("../models/Event");
 const Seat = require("../models/Seat");
 const SeatHold = require("../models/SeatHold");
+const Venue = require("../models/Venue");
+const User = require("../models/User");
 const waitlistService = require("./waitlistService");
+const emailService = require("./emailService");
 const ApiError = require("../utils/ApiError");
 const { BOOKING_STATUS } = require("../constants/bookingStatus");
 const { EVENT_STATUS } = require("../constants/eventStatus");
@@ -104,6 +107,23 @@ const createBooking = async (bookingData, userId) => {
     session.endSession();
   }
 
+  const [customer, venue] = await Promise.all([
+    User.findById(userId),
+    Venue.findById(eventDoc.venue),
+  ]);
+
+  await emailService.sendBookingConfirmation({
+    to: customer.email,
+    bookingId: booking._id.toString(),
+    eventTitle: eventDoc.title,
+    eventDate: eventDoc.eventDate.toDateString(),
+    eventTime: eventDoc.startTime,
+    venueName: venue ? venue.name : "N/A",
+    customerName: customer.name,
+    seats: booking.seats,
+    totalAmount: booking.totalAmount,
+  });
+
   return booking;
 };
 
@@ -146,6 +166,7 @@ const cancelBooking = async (bookingId, userId, userRole) => {
 
   const session = await mongoose.startSession();
   let booking;
+  const promotions = [];
 
   try {
     await session.withTransaction(async () => {
@@ -179,9 +200,11 @@ const cancelBooking = async (bookingId, userId, userRole) => {
           throw new ApiError(409, "Seat record not found during cancellation");
         }
 
-        const wasPromoted = await waitlistService.promoteNextForSeat(seatDoc, session);
+        const promotion = await waitlistService.promoteNextForSeat(seatDoc, session);
 
-        if (!wasPromoted) {
+        if (promotion) {
+          promotions.push(promotion);
+        } else {
           seatsToReleaseToAvailable.push(seatDoc._id);
         }
       }
@@ -210,6 +233,14 @@ const cancelBooking = async (bookingId, userId, userRole) => {
     });
   } finally {
     session.endSession();
+  }
+
+  for (const promotion of promotions) {
+    try {
+      await waitlistService.sendOfferEmailForPromotion(promotion);
+    } catch (error) {
+      console.error("Failed to send waitlist offer email during cancellation:", error);
+    }
   }
 
   return booking;
