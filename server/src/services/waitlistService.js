@@ -94,7 +94,7 @@ const leaveWaitlist = async (waitlistId, userId) => {
   return waitlistEntry;
 };
 
-const promoteNextForSeat = async (seat, session) => {
+const promoteNextForSeat = async (seat, session, expectedCurrentStatus = SEAT_STATUS.BOOKED) => {
   const nextInLine = await Waitlist.findOneAndUpdate(
     {
       event: seat.event,
@@ -110,7 +110,7 @@ const promoteNextForSeat = async (seat, session) => {
   }
 
   const updatedSeat = await Seat.findOneAndUpdate(
-    { _id: seat._id, status: SEAT_STATUS.BOOKED },
+    { _id: seat._id, status: expectedCurrentStatus },
     { status: SEAT_STATUS.HELD },
     { new: true, session }
   );
