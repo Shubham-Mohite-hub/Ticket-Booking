@@ -18,24 +18,28 @@ const createEvent = async (eventData, userId) => {
     throw new ApiError(400, "End time must be after start time");
   }
 
-  const event = await Event.create({
-    ...eventData,
-    organizer: userId,
-    status: EVENT_STATUS.DRAFT,
-  });
+  const session = await mongoose.startSession();
+  let event;
 
   try {
-    await seatService.generateSeatsForEvent(event, venueExists);
-  } catch (error) {
-    // Seat generation failed — an event must never exist without its full
-    // seat map, so the just-created event is rolled back (compensating
-    // delete) and the original error is rethrown. seatService.js is not
-    // modified per instructions, and generateSeatsForEvent does not accept
-    // a Mongoose session, so this is a compensating action rather than a
-    // single atomic DB transaction spanning both writes.
-    await Event.findByIdAndDelete(event._id);
+    await session.withTransaction(async () => {
+      const created = await Event.create(
+        [
+          {
+            ...eventData,
+            organizer: userId,
+            status: EVENT_STATUS.DRAFT,
+          },
+        ],
+        { session }
+      );
 
-    throw error;
+      event = created[0];
+
+      await seatService.generateSeatsForEvent(event, venueExists, session);
+    });
+  } finally {
+    session.endSession();
   }
 
   return event;
