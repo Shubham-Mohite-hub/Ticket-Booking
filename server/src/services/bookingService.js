@@ -76,6 +76,9 @@ const createBooking = async (bookingData, userId) => {
 
       const totalAmount = seats.reduce((sum, seat) => sum + seat.price, 0);
 
+      console.log("Seats to confirm:");
+console.log(seatIdsToConfirm);
+
       const updateResult = await Seat.updateMany(
         { _id: { $in: seatIdsToConfirm }, status: SEAT_STATUS.HELD },
         { status: SEAT_STATUS.BOOKED },

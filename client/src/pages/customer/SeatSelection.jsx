@@ -34,6 +34,33 @@ const SeatSelection = () => {
 
       setEvent(eventData);
       setSeats(seatData);
+
+      console.log("Seat Data:", seatData);
+console.log(
+  "Statuses:",
+  seatData.map(s => s.status)
+);
+      console.log("Seat Data:", seatData);
+
+console.log(
+  "Available seats:",
+  seatData.filter(s => s.status === "Available").length
+);
+
+console.log(
+  "Booked seats:",
+  seatData.filter(s => s.status === "Booked").length
+);
+
+console.log(
+  "Held seats:",
+  seatData.filter(s => s.status === "Held").length
+);
+
+console.log(
+  "Statuses:",
+  [...new Set(seatData.map(s => s.status))]
+);
     } catch (err) {
       const message = err.response?.data?.message || "Failed to load seat map";
       setError(message);
@@ -71,6 +98,19 @@ const SeatSelection = () => {
     (sum, seat) => sum + seat.price,
     0
   );
+  const isSoldOut = event?.isSoldOut;
+
+const handleJoinWaitlist = async () => {
+  try {
+    await joinWaitlist(id, "Regular");
+
+    toast.success("You've been added to the waitlist.");
+  } catch (err) {
+    toast.error(
+      err.response?.data?.message || "Unable to join waitlist."
+    );
+  }
+};
   const handleProceed = async () => {
     setIsProcessing(true);
 
@@ -103,7 +143,7 @@ const SeatSelection = () => {
 
   if (isLoading) {
     return (
-      <div className="max-w-5xl mx-auto px-6 py-10 space-y-4">
+      <div className="max-w-7xl mx-auto px-6 py-10 space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-96 w-full rounded-2xl" />
       </div>
@@ -112,25 +152,119 @@ const SeatSelection = () => {
 
   if (error) {
     return (
-      <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="max-w-7xl mx-auto px-6 py-10">
         <ErrorState message={error} onRetry={fetchData} />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-64px)]">
-      <div className="max-w-5xl mx-auto px-6 py-8 flex-1 w-full">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">{event?.title}</h1>
-          <p className="text-sm text-gray-500 mt-1">Select your seats</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-6 py-8 flex-1 w-full">
+        <div className="mb-10">
+          <h1 className="text-4xl font-bold text-gray-900">{event?.title}</h1>
+          <p className="text-gray-500 mt-3 text-lg">
+Choose your preferred seats before proceeding to checkout.
+</p>
+<div className="mt-6 flex flex-wrap gap-6">
+
+    <div className="bg-white px-5 py-3 rounded-xl shadow-sm border">
+
+        <p className="text-gray-500 text-sm">
+            Event Date
+        </p>
+
+        <p className="font-semibold">
+            {new Date(event.eventDate).toLocaleDateString()}
+        </p>
+
+    </div>
+
+    <div className="bg-white px-5 py-3 rounded-xl shadow-sm border">
+
+        <p className="text-gray-500 text-sm">
+            Time
+        </p>
+
+        <p className="font-semibold">
+            {event.startTime}
+        </p>
+
+    </div>
+
+    <div className="bg-white px-5 py-3 rounded-xl shadow-sm border">
+
+        <p className="text-gray-500 text-sm">
+            Venue
+        </p>
+
+        <p className="font-semibold">
+            {event.venue?.name}
+        </p>
+
+    </div>
+
+</div>
         </div>
 
+        
+
+<div className="flex justify-center gap-8 mb-8 flex-wrap">
+
+    <div className="flex items-center gap-2">
+        <div className="w-5 h-5 rounded bg-green-500"></div>
+        Available
+    </div>
+
+    <div className="flex items-center gap-2">
+        <div className="w-5 h-5 rounded bg-indigo-600"></div>
+        Selected
+    </div>
+
+    <div className="flex items-center gap-2">
+        <div className="w-5 h-5 rounded bg-red-500"></div>
+        Booked
+    </div>
+
+    <div className="flex items-center gap-2">
+        <div className="w-5 h-5 rounded bg-yellow-500"></div>
+        Held
+    </div>
+
+</div>
+
         {seats.length === 0 ? (
-          <EmptyState title="No seats available" message="This event has no seat map yet." />
-        ) : (
-          <SeatMap seats={seats} selectedSeatIds={selectedSeatIds} onToggleSeat={handleToggleSeat} />
-        )}
+  <EmptyState
+    title="No seats available"
+    message="This event has no seat map yet."
+  />
+) : isSoldOut ? (
+  <div className="bg-white rounded-3xl shadow-lg p-12 text-center">
+
+    <h2 className="text-3xl font-bold mb-4">
+      Event Sold Out
+    </h2>
+
+    <p className="text-gray-500 mb-8">
+      All seats for this event have been booked.
+      Join the waitlist and we'll notify you if a seat becomes available.
+    </p>
+
+    <button
+      onClick={handleJoinWaitlist}
+      className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-semibold"
+    >
+      Join Waitlist
+    </button>
+
+  </div>
+) : (
+  <SeatMap
+    seats={seats}
+    selectedSeatIds={selectedSeatIds}
+    onToggleSeat={handleToggleSeat}
+  />
+)}
       </div>
 
       <SelectionSummary

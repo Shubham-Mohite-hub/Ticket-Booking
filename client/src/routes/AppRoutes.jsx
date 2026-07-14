@@ -12,6 +12,8 @@ import RoleProtectedRoute from "./RoleProtectedRoute";
 import MyBookings from "../pages/customer/MyBookings";
 import BookingDetails from "../pages/customer/BookingDetails";
 import SeatSelection from "../pages/customer/SeatSelection";
+import TicketPage from "../pages/customer/TicketPage";
+import BookingSuccess from "../pages/customer/BookingSuccess";
 import Checkout from "../pages/customer/Checkout";
 import { ROLES } from "../utils/roles";
 
@@ -27,19 +29,45 @@ const AppRoutes = () => {
         <Route path="/events" element={<Events />} />
         <Route path="/events/:id" element={<EventDetails />} />
         <Route path="/events/:id/seats" element={<SeatSelection />} />
-        <Route path="/events/:id/checkout"element={<Checkout />}/>
+        <Route path="/events/:id/checkout" element={<Checkout />} />
         <Route path="/bookings" element={<MyBookings />} />
-        <Route path="/bookings/:id"element={<BookingDetails />}/>
+        <Route path="/bookings/:id" element={<BookingDetails />} />
 
-        <Route element={<RoleProtectedRoute allowedRoles={[ROLES.ORGANIZER]} />}>
-          <Route path="/organizer/dashboard" element={<PlaceholderPage title="Organizer Dashboard" />} />
-          <Route path="/organizer/events" element={<PlaceholderPage title="My Events" />} />
+        <Route
+  path="/ticket/:id"
+  element={<TicketPage />}
+/>
+       
+
+
+        <Route path="/booking-success" element={<BookingSuccess />} />
+
+        <Route
+          element={<RoleProtectedRoute allowedRoles={[ROLES.ORGANIZER]} />}
+        >
+          <Route
+            path="/organizer/dashboard"
+            element={<PlaceholderPage title="Organizer Dashboard" />}
+          />
+          <Route
+            path="/organizer/events"
+            element={<PlaceholderPage title="My Events" />}
+          />
         </Route>
 
         <Route element={<RoleProtectedRoute allowedRoles={[ROLES.ADMIN]} />}>
-          <Route path="/admin/dashboard" element={<PlaceholderPage title="Admin Dashboard" />} />
-          <Route path="/admin/venues" element={<PlaceholderPage title="Venues" />} />
-          <Route path="/admin/users" element={<PlaceholderPage title="Users" />} />
+          <Route
+            path="/admin/dashboard"
+            element={<PlaceholderPage title="Admin Dashboard" />}
+          />
+          <Route
+            path="/admin/venues"
+            element={<PlaceholderPage title="Venues" />}
+          />
+             <Route
+            path="/admin/users"
+            element={<PlaceholderPage title="Users" />}
+          />
         </Route>
       </Route>
 

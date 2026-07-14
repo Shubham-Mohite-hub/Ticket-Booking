@@ -17,27 +17,40 @@ const { ROLES } = require("../constants/roles");
 const WAITLIST_OFFER_TTL_MINUTES = 10;
 
 const joinWaitlist = async (eventId, category, userId) => {
+  
+  console.log("========== WAITLIST ==========");
+  console.log("eventId:", eventId);
+  console.log("category:", category);
+  console.log("userId:", userId);
+
   const eventDoc = await Event.findById(eventId);
+  console.log("event found:", !!eventDoc);
 
   if (!eventDoc) {
     throw new ApiError(404, "Event not found");
   }
 
-  if (eventDoc.status === EVENT_STATUS.CANCELLED) {
-    throw new ApiError(400, "Cannot join a waitlist for a cancelled event");
-  }
-
   const venue = await Venue.findById(eventDoc.venue);
+  console.log(
+    "Venue categories:",
+    venue.seatCategories.map(c => c.name)
+  );
 
-  if (!venue) {
-    throw new ApiError(404, "Venue not found for this event");
-  }
+  const categoryExists = venue.seatCategories.some(
+    (cat) => cat.name === category
+  );
 
-  const categoryExists = venue.seatCategories.some((cat) => cat.name === category);
+  console.log("categoryExists:", categoryExists);
 
   if (!categoryExists) {
-    throw new ApiError(400, "Invalid seat category for this event's venue");
+    throw new ApiError(400, "Invalid seat category");
   }
+
+  console.log("Incoming category:", category);
+console.log(
+  "Venue categories:",
+  venue.seatCategories.map(c => c.name)
+);
 
   try {
     const waitlistEntry = await Waitlist.create({

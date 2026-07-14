@@ -71,15 +71,19 @@ const EventDetails = () => {
     <div>
       <EventDetailsHeader event={event} />
 
-      <div className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 space-y-6">
+      <div className="max-w-7xl mx-auto px-8 py-12 grid lg:grid-cols-[2fr_1fr] gap-10">
+        <div className="space-y-8">
           <EventInfo event={event} />
           <PriceCards categories={categories} />
         </div>
 
-        <div className="space-y-6">
+       <div className="space-y-6 self-start">
           <VenueInfo venue={event.venue} />
-          <BookTicketsButton event={event} hasAvailability={hasAvailability} />
+          <BookTicketsButton
+  event={event}
+  hasAvailability={hasAvailability}
+  categories={categories}
+/>
         </div>
       </div>
     </div>

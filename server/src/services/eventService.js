@@ -3,6 +3,8 @@ const Event = require("../models/Event");
 const Venue = require("../models/Venue");
 const seatService = require("./seatService");
 const ApiError = require("../utils/ApiError");
+const Seat = require("../models/Seat");
+const { SEAT_STATUS } = require("../constants/seatStatus");
 const { EVENT_STATUS } = require("../constants/eventStatus");
 
 const createEvent = async (eventData, userId) => {
@@ -67,7 +69,22 @@ const getEventById = async (eventId) => {
     throw new ApiError(404, "Event not found");
   }
 
-  return event;
+  const availableSeats = await Seat.countDocuments({
+    event: eventId,
+    status: SEAT_STATUS.AVAILABLE,
+  });
+
+  const totalSeats = await Seat.countDocuments({
+    event: eventId,
+  });
+
+  const eventObj = event.toObject();
+
+  eventObj.availableSeats = availableSeats;
+  eventObj.totalSeats = totalSeats;
+  eventObj.isSoldOut = availableSeats === 0;
+
+  return eventObj;
 };
 
 const updateEvent = async (eventId, updateData) => {

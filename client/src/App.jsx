@@ -1,15 +1,24 @@
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, useLocation } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "./context/AuthContext";
 import Navbar from "./components/layout/Navbar";
 import Sidebar from "./components/layout/Sidebar";
 import AppRoutes from "./routes/AppRoutes";
 
-const App = () => {
+function AppLayout() {
+  const location = useLocation();
+
+  const hideLayout =
+    location.pathname === "/login" ||
+    location.pathname === "/register";
+
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Toaster position="top-right" toastOptions={{ duration: 3500 }} />
+    <>
+      <Toaster position="top-right" toastOptions={{ duration: 3500 }} />
+
+      {hideLayout ? (
+        <AppRoutes />
+      ) : (
         <div className="min-h-screen flex flex-col bg-gray-50">
           <Navbar />
           <div className="flex flex-1">
@@ -19,6 +28,16 @@ const App = () => {
             </main>
           </div>
         </div>
+      )}
+    </>
+  );
+}
+
+const App = () => {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppLayout />
       </AuthProvider>
     </BrowserRouter>
   );
