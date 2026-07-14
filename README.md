@@ -8,9 +8,9 @@ A full-stack Ticket Booking Platform built for high-demand events such as movies
 
 # 🚀 Live Demo
 
-**Frontend:** https://your-vercel-url.vercel.app
+**Frontend:** ticket-booking-alpha-silk.vercel.app
 
-**Backend API:** https://your-render-url.onrender.com
+**Backend API:** https://ticket-booking-ecny.onrender.com
 
 ---
 
